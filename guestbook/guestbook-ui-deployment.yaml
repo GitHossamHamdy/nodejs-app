@@ -14,7 +14,7 @@ spec:
         app: guestbook-ui
     spec:
       containers:
-      - image: docker.io/corelab/ks-guestbook-demo:0.2
+      - image: pkg.harness.io/eerjnxtns4grlg5vnnjzuw/hossam-registry/gitlab-nodejs-image:latest
         name: guestbook-ui
         ports:
         - containerPort: 80
