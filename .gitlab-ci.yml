@@ -73,5 +73,4 @@ chaos-resilience-test:
       --timeout 300
       --interactive=false
       --monitor=true
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+
