@@ -17,41 +17,11 @@
 # https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Getting-Started.gitlab-ci.yml
 
 stages:          # List of stages for jobs, and their order of execution
-  - build
-  - test
-  - deploy
   - resilience-test
-
-build-job:       # This job runs in the build stage, which runs first.
-  stage: build
-  script:
-    - echo "Compiling the code..."
-    - echo "Compile complete."
-
-unit-test-job:   # This job runs in the test stage.
-  stage: test    # It only starts when the job in the build stage completes successfully.
-  script:
-    - echo "Running unit tests... This will take about 60 seconds."
-    - sleep 60
-    - echo "Code coverage is 90%"
-
-lint-test-job:   # This job also runs in the test stage.
-  stage: test    # It can run at the same time as unit-test-job (in parallel).
-  script:
-    - echo "Linting code... This will take about 10 seconds."
-    - sleep 10
-    - echo "No lint issues found."
-
-deploy-job:      # This job runs in the deploy stage.
-  stage: deploy  # It only runs when *both* jobs in the test stage complete successfully.
-  environment: production
-  script:
-    - echo "Deploying application..."
-    - echo "Application successfully deployed."
 
 chaos-resilience-test:
   stage: resilience-test
-  image: alpine:3.20
+  image: ubuntu:22.04
   variables:
     HARNESS_URL: "https://app.harness.io"
     HARNESS_ACCOUNT_ID: "EeRjnXTnS4GrLG5VNNJZUw"
@@ -59,9 +29,10 @@ chaos-resilience-test:
     HARNESS_PROJECT_ID: "Platform_Engineering"
     HARNESS_EXPERIMENT_ID: "b94ec985-757f-4e7e-8eb1-2170115d057b"
   before_script:
-    - apk add --no-cache curl jq bash
+    - apt-get update && apt-get install -y curl jq
     - curl -sL https://app.harness.io/public/shared/tools/chaos/hce-cli/0.0.8/hce-cli-0.0.8-linux-amd64 -o hce-cli
     - chmod +x hce-cli
+    - file ./hce-cli   # sanity check: confirms it's a valid ELF executable
   script:
     - ./hce-cli experiment run
       --account-id="$HARNESS_ACCOUNT_ID"
