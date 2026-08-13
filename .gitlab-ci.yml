@@ -32,6 +32,7 @@ chaos-resilience-test:
     - apt-get update && apt-get install -y curl jq
     - curl -sL https://app.harness.io/public/shared/tools/chaos/hce-cli/0.0.8/hce-cli-0.0.8-linux-amd64 -o hce-cli
     - chmod +x hce-cli
+    - ./hce-cli config create --name "gitlab-ci-config" --interactive=false
   script:
     - ./hce-cli experiment run
       --account-id="$HARNESS_ACCOUNT_ID"
