@@ -63,8 +63,7 @@ pipeline:
                 - latest
     - name: Deploy to Kubernetes
       id: deploy_to_kubernetes
-      delegate:
-        - harness-delegate-new
+      delegate: harness-delegate-new
       environment:
         items:
           - id: dev
@@ -86,6 +85,19 @@ pipeline:
       on-failure:
         errors: all
         action: stage-rollback
+      service:
+        type: kubernetes
+        items:
+          - id: nodejs_app
+            with:
+              overlay:
+                type: Kubernetes
+                spec:
+                  artifacts:
+                    primary:
+                      primaryArtifactRef: <+input>
+                      sources: <+input>
+      runtime: cloud
   tags:
     onboarding: "true"
     ai_generated: ""
