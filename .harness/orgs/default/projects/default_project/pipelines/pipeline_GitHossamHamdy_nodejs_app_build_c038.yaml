@@ -1,7 +1,7 @@
 pipeline:
   id: pipeline_GitHossamHamdy_nodejs_app_build_c038
   name: pipeline_GitHossamHamdy_nodejs_app_build_c038
-  description: Builds and tests the Node.js app, then publishes the Docker image to Docker Hub.
+  description: Builds and tests the Node.js app, publishes the Docker image to Docker Hub, then deploys it to Kubernetes.
   stages:
     - name: Build and Test
       id: build_and_test
@@ -60,6 +60,29 @@ pipeline:
               repo: hossameldinhamdy2008/test-repo
               tags:
                 - latest
+    - name: Deploy to Kubernetes
+      id: deploy_to_kubernetes
+      service: nodejs_app
+      environment:
+        id: dev
+        deploy-to: dev_k8s_infra
+      steps:
+        - name: Kubernetes Rolling Deploy
+          id: k8sRollingDeployStep
+          template:
+            uses: k8sRollingDeployStep
+      rollback:
+        - group:
+            steps:
+              - name: Kubernetes Rolling Rollback
+                id: k8sRollingRollbackStep
+                template:
+                  uses: k8sRollingRollbackStep
+          id: k8sRollingRollback
+          name: Kubernetes Rolling Rollback
+      on-failure:
+        errors: all
+        action: stage-rollback
   tags:
     onboarding: "true"
     ai_generated: ""
