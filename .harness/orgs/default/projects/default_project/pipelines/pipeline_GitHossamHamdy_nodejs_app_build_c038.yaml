@@ -1,0 +1,54 @@
+pipeline:
+  id: pipeline_GitHossamHamdy_nodejs_app_build_c038
+  name: pipeline_GitHossamHamdy_nodejs_app_build_c038
+  stages:
+    - name: Build and Test
+      id: build_and_test
+      runtime: cloud
+      clone:
+        enabled: true
+      cache:
+        enabled: true
+      steps:
+        - name: Setup Node
+          id: setup_node
+          run:
+            shell: bash
+            script: |-
+              # Install nvm
+              export NVM_DIR="$HOME/.nvm"
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+              # Load nvm
+              [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+              # Install Node.js version from .node-version
+              nvm install
+              nvm use
+              node --version
+              npm --version
+              # Make nvm available in subsequent steps
+              echo "export NVM_DIR=\"$HOME/.nvm\"" >> /harness/.node_env
+              echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"' >> /harness/.node_env
+              echo "nvm use --silent" >> /harness/.node_env
+        - name: Install Dependencies
+          id: install_dependencies
+          run:
+            shell: bash
+            script: |-
+              source /harness/.node_env
+              node --version
+              npm ci
+        - name: Run Tests
+          id: run_tests
+          run:
+            shell: bash
+            script: |-
+              source /harness/.node_env
+              mkdir -p .harness/reports
+              npm install --no-save mocha-junit-reporter
+              MOCHA_FILE=.harness/reports/junit.xml npx mocha --exit --reporter mocha-junit-reporter
+            report:
+              type: junit
+              paths:
+                - .harness/reports/junit.xml
+  tags:
+    onboarding: "true"
