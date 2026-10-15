@@ -1,6 +1,7 @@
 pipeline:
   id: pipeline_GitHossamHamdy_nodejs_app_build_c038
   name: pipeline_GitHossamHamdy_nodejs_app_build_c038
+  description: Builds and tests the Node.js app, then publishes the Docker image to Docker Hub.
   stages:
     - name: Build and Test
       id: build_and_test
@@ -50,5 +51,15 @@ pipeline:
               type: junit
               paths:
                 - .harness/reports/junit.xml
+        - name: Build and Push to Docker Hub
+          id: build_and_push_docker
+          build:
+            uses: buildAndPushToDocker
+            with:
+              connector: connector_DockerRegistry_db17
+              repo: hossameldinhamdy2008/test-repo
+              tags:
+                - latest
   tags:
     onboarding: "true"
+    ai_generated: ""
