@@ -63,6 +63,9 @@ pipeline:
                 - latest
     - name: Deploy to Kubernetes
       id: deploy_to_kubernetes
+      runtime:
+        delegate:
+          - harness-delegate-new
       environment:
         items:
           - id: dev
