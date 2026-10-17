@@ -93,9 +93,15 @@ function shutdown(signal) {
   shuttingDown = true;
   logger.info('server_stopping', { signal: signal });
 
+  const terminate = () => {
+    // Restore Node's default signal termination on every shutdown path.
+    process.removeListener(signal, shutdown);
+    process.kill(process.pid, signal);
+  };
+
   var timeout = setTimeout(function() {
     logger.error('server_shutdown_timeout');
-    process.exit(1);
+    terminate();
   }, 10000);
   timeout.unref();
 
@@ -103,13 +109,11 @@ function shutdown(signal) {
     clearTimeout(timeout);
     if (error) {
       logger.error('server_shutdown_error');
-      process.exitCode = 1;
+      terminate();
       return;
     }
     logger.info('server_stopped');
-    // Restore Node's default signal termination (and its original exit status).
-    process.removeListener(signal, shutdown);
-    process.kill(process.pid, signal);
+    terminate();
   });
 
   // Available on newer Node releases; retain compatibility with Node 14.

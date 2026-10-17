@@ -15,10 +15,10 @@ const startServer = (environment, notify) => {
     "  this.once('listening', function() { require('fs').writeSync(3, String(this.address().port)); require('fs').closeSync(3); });",
     '  return listen.apply(this, arguments);',
     '};',
-    notify === 'slow' ? [
+    ['slow', 'stalled'].includes(notify) ? [
       "require('./routes/users').stack[0].route.stack[0].handle = function(req, res) {",
       "  res.write('pending');",
-      "  setTimeout(function() { res.end('complete'); }, 200);",
+      `  if (${notify === 'slow'}) { setTimeout(function() { res.end('complete'); }, 200); }`,
       '};'
     ].join('\n') : '',
     "require('./bin/www');"
@@ -116,6 +116,35 @@ describe('Server lifecycle logging', function() {
       assert.strictEqual(child.records[2].record.signal, signal);
       assert(!JSON.stringify(child.records).includes('do-not-log-this'));
       assert(child.records.every(entry => entry.stream === 'stdout'));
+    });
+
+    it(`forces shutdown within the deadline and preserves ${signal}`, async function() {
+      this.timeout(15000);
+      const child = startServer({}, 'stalled');
+      const port = await child.ready;
+      await new Promise((resolve, reject) => {
+        const client = http.get({ hostname: '127.0.0.1', port, path: '/users', agent: false }, res => {
+          res.once('data', resolve);
+          res.on('error', error => {
+            // The forced signal intentionally disconnects this unfinished response.
+            if (error.code !== 'ECONNRESET') {
+              reject(error);
+            }
+          });
+          res.resume();
+        });
+        client.on('error', reject);
+      });
+      const started = process.hrtime.bigint();
+      child.kill(signal);
+      assert.deepStrictEqual(await child.closed, { code: null, signal });
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+      assert(elapsedMs >= 9900 && elapsedMs < 14000);
+      assert.deepStrictEqual(child.records.map(entry => entry.record.event), [
+        'server_listening', 'server_stopping', 'server_shutdown_timeout'
+      ]);
+      assert.strictEqual(child.records[2].record.level, 'error');
+      assert.strictEqual(child.records[2].stream, 'stderr');
     });
   });
 

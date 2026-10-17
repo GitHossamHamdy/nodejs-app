@@ -24,8 +24,9 @@ invalid values fall back to `info`. No additional packages or log files are need
   deliberately excluded. Keep additional log fields free of sensitive data.
 - `server_listening`, `server_stopping`, and `server_stopped` track the lifecycle.
   SIGINT/SIGTERM stop accepting new connections and drain requests for up to ten
-  seconds, then retain Node's original signal termination status. A timeout or
-  server error is logged at error level and exits with status 1.
+  seconds, retaining Node's original signal termination status even on timeout.
+  Timeouts and server errors are logged at error level; startup failures exit
+  with status 1.
 
 Run `npm test` for the existing application tests plus logging/privacy and
 server lifecycle tests. Production deployments should also set
