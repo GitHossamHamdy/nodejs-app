@@ -35,7 +35,7 @@ describe('Structured logger', () => {
   });
 
   ['debug', 'info', 'warn', 'error', 'silent'].forEach((level, index) => {
-    it('filters at the ' + level + ' threshold', () => {
+    it(`filters at the ${level} threshold`, () => {
       const output = memoryLogger(level);
       ['debug', 'info', 'warn', 'error'].forEach(severity => output.logger[severity](severity));
       assert.strictEqual(output.stdout.length + output.stderr.length, Math.max(4 - index, 0));
@@ -65,21 +65,22 @@ describe('Structured logger', () => {
 });
 
 describe('HTTP logging', () => {
-  let records;
-  let originalStdout;
-  let originalStderr;
+  let records = [];
+  let originalStdout = null;
+  let originalStderr = null;
 
   beforeEach(() => {
     records = [];
     originalStdout = process.stdout.write;
     originalStderr = process.stderr.write;
     function capture(original) {
-      return function(chunk) {
+      return function(...args) {
+        const chunk = args[0];
         if (typeof chunk === 'string' && chunk[0] === '{') {
           records.push(JSON.parse(chunk));
           return true;
         }
-        return original.apply(this, arguments);
+        return original.apply(this, args);
       };
     }
     process.stdout.write = capture(originalStdout);
@@ -167,6 +168,7 @@ describe('HTTP logging', () => {
 
   it('records disconnected responses exactly once at error level', done => {
     const example = express();
+    const server = http.createServer(example);
     example.use(requestLogger);
     example.get('/stream', (req, res) => {
       res.write('partial');
@@ -186,7 +188,7 @@ describe('HTTP logging', () => {
         });
       });
     });
-    const server = example.listen(0, '127.0.0.1', () => {
+    server.listen(0, '127.0.0.1', () => {
       const client = http.get({ hostname: '127.0.0.1', port: server.address().port, path: '/stream' }, res => {
         res.once('data', () => res.destroy());
       });

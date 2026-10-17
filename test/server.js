@@ -44,7 +44,7 @@ const startServer = (environment, notify) => {
     child[stream].setEncoding('utf8');
     child[stream].on('data', chunk => {
       pending += chunk;
-      let newline;
+      let newline = -1;
       while ((newline = pending.indexOf('\n')) !== -1) {
         const record = JSON.parse(pending.slice(0, newline));
         pending = pending.slice(newline + 1);
@@ -66,16 +66,14 @@ const waitForLog = (child, event) => {
     const onRecord = record => {
       if (record.event === event) {
         child.logs.removeListener('record', onRecord);
-        child.removeListener('close', onClose);
         resolve(record);
       }
     };
-    const onClose = () => {
-      child.logs.removeListener('record', onRecord);
-      reject(new Error('Server closed before ' + event));
-    };
     child.logs.on('record', onRecord);
-    child.once('close', onClose);
+    child.once('close', () => {
+      child.logs.removeListener('record', onRecord);
+      reject(new Error(`Server closed before ${event}`));
+    });
   });
 };
 
@@ -103,7 +101,7 @@ describe('Server lifecycle logging', function() {
   });
 
   ['SIGTERM', 'SIGINT'].forEach(signal => {
-    it('logs startup and preserves termination by ' + signal, async () => {
+    it(`logs startup and preserves termination by ${signal}`, async () => {
       const child = startServer();
       const listening = await waitForLog(child, 'server_listening');
       assert.strictEqual(listening.level, 'info');
@@ -169,7 +167,7 @@ describe('Server lifecycle logging', function() {
   });
 
   ['warn', 'silent'].forEach(level => {
-    it('applies LOG_LEVEL=' + level + ' to HTTP and lifecycle records', async () => {
+    it(`applies LOG_LEVEL=${level} to HTTP and lifecycle records`, async () => {
       const child = startServer({ LOG_LEVEL: level }, true);
       const port = await child.ready;
       assert.strictEqual(await get(port, '/users'), 200);
