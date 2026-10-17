@@ -61,43 +61,6 @@ pipeline:
               repo: hossameldinhamdy2008/test-repo
               tags:
                 - latest
-    - name: Deploy to Kubernetes
-      id: deploy_to_kubernetes
-      delegate: harness-delegate-new
-      environment:
-        items:
-          - id: dev
-            deploy-to: dev_k8s_infra
-      steps:
-        - name: Kubernetes Rolling Deploy
-          id: k8sRollingDeployStep
-          template:
-            uses: k8sRollingDeployStep
-      rollback:
-        - group:
-            steps:
-              - name: Kubernetes Rolling Rollback
-                id: k8sRollingRollbackStep
-                template:
-                  uses: k8sRollingRollbackStep
-          id: k8sRollingRollback
-          name: Kubernetes Rolling Rollback
-      on-failure:
-        errors: all
-        action: stage-rollback
-      service:
-        type: kubernetes
-        items:
-          - id: nodejs_app
-            with:
-              overlay:
-                type: Kubernetes
-                spec:
-                  artifacts:
-                    primary:
-                      primaryArtifactRef: <+input>
-                      sources: <+input>
-      runtime: cloud
   tags:
     onboarding: "true"
     ai_generated: ""
