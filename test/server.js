@@ -103,7 +103,7 @@ describe('Server lifecycle logging', function() {
   });
 
   ['SIGTERM', 'SIGINT'].forEach(signal => {
-    it('logs startup and exits cleanly on ' + signal, async () => {
+    it('logs startup and preserves termination by ' + signal, async () => {
       const child = startServer();
       const listening = await waitForLog(child, 'server_listening');
       assert.strictEqual(listening.level, 'info');
@@ -111,7 +111,7 @@ describe('Server lifecycle logging', function() {
       assert.strictEqual(await get(listening.port, '/users?private=do-not-log-this'), 200);
       child.kill(signal);
       const result = await child.closed;
-      assert.deepStrictEqual(result, { code: 0, signal: null });
+      assert.deepStrictEqual(result, { code: null, signal });
       assert.deepStrictEqual(child.records.map(entry => entry.record.event), [
         'server_listening', 'request_complete', 'server_stopping', 'server_stopped'
       ]);
@@ -135,7 +135,7 @@ describe('Server lifecycle logging', function() {
       client.on('error', reject);
     });
     assert.strictEqual(await response, 'pendingcomplete');
-    assert.strictEqual((await child.closed).code, 0);
+    assert.deepStrictEqual(await child.closed, { code: null, signal: 'SIGTERM' });
     assert.deepStrictEqual(child.records.map(entry => entry.record.event), [
       'server_listening', 'server_stopping', 'request_complete', 'server_stopped'
     ]);
@@ -175,7 +175,7 @@ describe('Server lifecycle logging', function() {
       assert.strictEqual(await get(port, '/users'), 200);
       assert.strictEqual(await get(port, '/do-not-log-this'), 404);
       child.kill('SIGTERM');
-      assert.strictEqual((await child.closed).code, 0);
+      assert.deepStrictEqual(await child.closed, { code: null, signal: 'SIGTERM' });
       assert.strictEqual(child.records.length, level === 'warn' ? 1 : 0);
       if (level === 'warn') {
         assert.strictEqual(child.records[0].record.event, 'request_complete');

@@ -107,6 +107,9 @@ function shutdown(signal) {
       return;
     }
     logger.info('server_stopped');
+    // Restore Node's default signal termination (and its original exit status).
+    process.removeListener(signal, shutdown);
+    process.kill(process.pid, signal);
   });
 
   // Available on newer Node releases; retain compatibility with Node 14.
