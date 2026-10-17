@@ -6,9 +6,9 @@ const path = require('path');
 
 const children = [];
 
-const startServer = (environment, notify) => {
-  // A separate pipe exposes readiness in tests without sleeps or port races.
-  const args = notify ? ['-e', [
+// Build optional child-process fixtures separately from process management.
+const serverScript = notify => {
+  return [
     "var http = require('http');",
     'var listen = http.Server.prototype.listen;',
     'http.Server.prototype.listen = function() {',
@@ -34,7 +34,12 @@ const startServer = (environment, notify) => {
       '};'
     ].join('\n') : '',
     "require('./bin/www');"
-  ].join('\n')] : [path.join(__dirname, '../bin/www')];
+  ].join('\n');
+};
+
+const startServer = (environment, notify) => {
+  // A separate pipe exposes readiness in tests without sleeps or port races.
+  const args = notify ? ['-e', serverScript(notify)] : [path.join(__dirname, '../bin/www')];
   const child = spawn(process.execPath, args, {
     cwd: path.join(__dirname, '..'),
     env: Object.assign({}, process.env, {
