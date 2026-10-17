@@ -5,7 +5,7 @@
  */
 
 var app = require('../app');
-var debug = require('debug')('demo:server');
+var logger = require('../lib/logger');
 var http = require('http');
 
 /**
@@ -25,9 +25,18 @@ var server = http.createServer(app);
  * Listen on provided port, on all network interfaces.
  */
 
-server.listen(port);
 server.on('error', onError);
 server.on('listening', onListening);
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+var shuttingDown = false;
+
+try {
+  server.listen(port);
+} catch (error) {
+  onError(error);
+}
 
 /**
  * Normalize a port into a number, string, or false.
@@ -54,27 +63,12 @@ function normalizePort(val) {
  */
 
 function onError(error) {
-  if (error.syscall !== 'listen') {
-    throw error;
-  }
-
-  var bind = typeof port === 'string'
-    ? 'Pipe ' + port
-    : 'Port ' + port;
-
-  // handle specific listen errors with friendly messages
-  switch (error.code) {
-    case 'EACCES':
-      console.error(bind + ' requires elevated privileges');
-      process.exit(1);
-      break;
-    case 'EADDRINUSE':
-      console.error(bind + ' is already in use');
-      process.exit(1);
-      break;
-    default:
-      throw error;
-  }
+  // Do not emit raw errors: messages may contain paths or credentials.
+  var code = ['EACCES', 'EADDRINUSE'].indexOf(error.code) !== -1
+    ? error.code
+    : 'UNKNOWN';
+  logger.error('server_error', { code: code });
+  process.exit(1);
 }
 
 /**
@@ -83,8 +77,47 @@ function onError(error) {
 
 function onListening() {
   var addr = server.address();
-  var bind = typeof addr === 'string'
-    ? 'pipe ' + addr
-    : 'port ' + addr.port;
-  debug('Listening on ' + bind);
+  logger.info('server_listening', typeof addr === 'string'
+    ? { transport: 'pipe' }
+    : { transport: 'tcp', port: addr.port });
+}
+
+/**
+ * Drain active requests on shutdown, with a bounded wait for keep-alive clients.
+ */
+
+function shutdown(signal) {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  logger.info('server_stopping', { signal: signal });
+
+  const terminate = () => {
+    // Restore Node's default signal termination on every shutdown path.
+    process.removeListener(signal, shutdown);
+    process.kill(process.pid, signal);
+  };
+
+  var timeout = setTimeout(function() {
+    logger.error('server_shutdown_timeout');
+    terminate();
+  }, 10000);
+  timeout.unref();
+
+  server.close(function(error) {
+    clearTimeout(timeout);
+    if (error) {
+      logger.error('server_shutdown_error');
+      terminate();
+      return;
+    }
+    logger.info('server_stopped');
+    terminate();
+  });
+
+  // Available on newer Node releases; retain compatibility with Node 14.
+  if (typeof server.closeIdleConnections === 'function') {
+    server.closeIdleConnections();
+  }
 }
