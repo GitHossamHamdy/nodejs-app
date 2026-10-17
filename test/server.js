@@ -21,6 +21,18 @@ const startServer = (environment, notify) => {
       `  if (${notify === 'slow'}) { setTimeout(function() { res.end('complete'); }, 200); }`,
       '};'
     ].join('\n') : '',
+    ['stdout', 'stderr'].includes(notify) ? [
+      "var logger = require('./lib/logger');",
+      'var flush = logger.flush;',
+      "logger.flush = function(callback) { process.send({ event: 'flushing' }); flush(callback); };",
+      "require('./routes/users').stack[0].route.stack[0].handle = function(req, res) {",
+      '  for (var i = 0; i < 512; i++) {',
+      `    logger.${notify === 'stdout' ? 'info' : 'warn'}('drain_probe', { sequence: i, padding: 'x'.repeat(1024) });`,
+      '  }',
+      `  process.send({ event: 'queued', buffered: process.${notify}.writableLength > 0 });`,
+      "  res.end('ok');",
+      '};'
+    ].join('\n') : '',
     "require('./bin/www');"
   ].join('\n')] : [path.join(__dirname, '../bin/www')];
   const child = spawn(process.execPath, args, {
@@ -28,7 +40,9 @@ const startServer = (environment, notify) => {
     env: Object.assign({}, process.env, {
       PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'production'
     }, environment),
-    stdio: notify ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
+    stdio: ['stdout', 'stderr'].includes(notify)
+      ? ['ignore', 'pipe', 'pipe', 'pipe', 'ipc']
+      : notify ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
   });
   if (notify) {
     child.ready = new Promise(resolve => child.stdio[3].once('data', chunk => resolve(Number(chunk.toString()))));
@@ -146,6 +160,57 @@ describe('Server lifecycle logging', function() {
       assert.strictEqual(child.records[2].record.level, 'error');
       assert.strictEqual(child.records[2].stream, 'stderr');
     });
+  });
+
+  ['stdout', 'stderr'].forEach(stream => {
+    it(`flushes queued ${stream} records before signal termination`, async () => {
+      const child = startServer({}, stream);
+      const port = await child.ready;
+      child[stream].pause();
+      try {
+        const queued = new Promise(resolve => child.once('message', resolve));
+        assert.strictEqual(await get(port, '/users'), 200);
+        assert.deepStrictEqual(await queued, { event: 'queued', buffered: true });
+        const flushing = new Promise((resolve, reject) => {
+          child.once('message', resolve);
+          child.once('exit', () => reject(new Error('Terminated before flushing output')));
+        });
+        child.kill('SIGTERM');
+        assert.deepStrictEqual(await flushing, { event: 'flushing' });
+        assert.strictEqual(child.exitCode, null);
+        assert.strictEqual(child.signalCode, null);
+      } finally {
+        child[stream].resume();
+      }
+      assert.deepStrictEqual(await child.closed, { code: null, signal: 'SIGTERM' });
+      const probes = child.records.filter(entry => entry.record.event === 'drain_probe');
+      assert.strictEqual(probes.length, 512);
+      assert(probes.every((entry, index) => entry.record.sequence === index && entry.stream === stream));
+      assert(child.records.some(entry => entry.record.event === 'server_stopped'));
+    });
+  });
+
+  it('retains the shutdown deadline when a collector never drains', async function() {
+    this.timeout(15000);
+    const child = startServer({}, 'stdout');
+    const port = await child.ready;
+    child.stdout.pause();
+    let result = null;
+    try {
+      const queued = new Promise(resolve => child.once('message', resolve));
+      assert.strictEqual(await get(port, '/users'), 200);
+      assert.deepStrictEqual(await queued, { event: 'queued', buffered: true });
+      const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+      const started = process.hrtime.bigint();
+      child.kill('SIGTERM');
+      result = await exited;
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+      assert(elapsedMs >= 9900 && elapsedMs < 14000);
+    } finally {
+      child.stdout.resume();
+    }
+    assert.deepStrictEqual(result, { code: null, signal: 'SIGTERM' });
+    await child.closed;
   });
 
   it('drains an active response before logging a clean shutdown', async () => {

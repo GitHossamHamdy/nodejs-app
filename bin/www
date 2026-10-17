@@ -93,27 +93,33 @@ function shutdown(signal) {
   shuttingDown = true;
   logger.info('server_stopping', { signal: signal });
 
+  var terminated = false;
+  var timeout = null;
   const terminate = () => {
+    if (terminated) {
+      return;
+    }
+    terminated = true;
+    clearTimeout(timeout);
     // Restore Node's default signal termination on every shutdown path.
     process.removeListener(signal, shutdown);
     process.kill(process.pid, signal);
   };
 
-  var timeout = setTimeout(function() {
+  timeout = setTimeout(function() {
     logger.error('server_shutdown_timeout');
     terminate();
   }, 10000);
   timeout.unref();
 
   server.close(function(error) {
-    clearTimeout(timeout);
     if (error) {
       logger.error('server_shutdown_error');
-      terminate();
-      return;
+    } else {
+      logger.info('server_stopped');
     }
-    logger.info('server_stopped');
-    terminate();
+    // Keep the shutdown deadline active while a slow collector drains output.
+    logger.flush(terminate);
   });
 
   // Available on newer Node releases; retain compatibility with Node 14.

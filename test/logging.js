@@ -65,6 +65,23 @@ describe('Structured logger', () => {
     });
   });
 
+  it('waits for both output streams before completing a flush', () => {
+    const callbacks = [];
+    const stream = { write: (line, callback) => {
+      assert.strictEqual(line, '');
+      callbacks.push(callback);
+    } };
+    const output = logger.createLogger({ stdout: stream, stderr: stream });
+    let completed = false;
+    output.flush(() => { completed = true; });
+    assert.strictEqual(callbacks.length, 2);
+    assert.strictEqual(completed, false);
+    callbacks[0]();
+    assert.strictEqual(completed, false);
+    callbacks[1]();
+    assert.strictEqual(completed, true);
+  });
+
   it('does not let fields replace the timestamp, severity or event', () => {
     const output = memoryLogger();
     output.logger.info('actual', { event: 'fake', level: 'error', timestamp: 'fake' });
