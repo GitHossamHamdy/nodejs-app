@@ -199,6 +199,54 @@ describe('HTTP logging', () => {
     }
   });
 
+  it('does not duplicate a forced record when the response later completes', async () => {
+    const example = express();
+    example.use(requestLogger);
+    example.get('/forced', (req, res) => {
+      requestLogger.finalizeOutstanding();
+      res.send('ok');
+    });
+    await request(example).get('/forced').expect(200);
+    assert.strictEqual(records.length, 1);
+    assertSafeRequest(records[0]);
+    assert.strictEqual(records[0].completed, false);
+    assert.strictEqual(records[0].level, 'error');
+    assert.strictEqual(records[0].status, null);
+  });
+
+  it('measures a client disconnect before response headers exactly once', done => {
+    const example = express();
+    const server = http.createServer(example);
+    let client = null;
+    example.use(requestLogger);
+    example.get('/waiting', (req, res) => {
+      res.on('close', () => {
+        setImmediate(() => server.close(() => {
+          try {
+            assert.strictEqual(records.length, 1);
+            assertSafeRequest(records[0]);
+            assert.strictEqual(records[0].completed, false);
+            assert.strictEqual(records[0].level, 'error');
+            assert.strictEqual(records[0].status, null);
+            assert.strictEqual(records[0].path, '/waiting');
+            done();
+          } catch (error) {
+            done(error);
+          }
+        }));
+      });
+      client.destroy();
+    });
+    server.listen(0, '127.0.0.1', () => {
+      client = http.get({ hostname: '127.0.0.1', port: server.address().port, path: '/waiting', agent: false });
+      client.on('error', error => {
+        if (error.code !== 'ECONNRESET') {
+          done(error);
+        }
+      });
+    });
+  });
+
   it('records disconnected responses exactly once at error level', done => {
     const example = express();
     const server = http.createServer(example);

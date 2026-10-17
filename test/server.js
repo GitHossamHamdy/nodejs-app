@@ -141,7 +141,7 @@ describe('Server lifecycle logging', function() {
       this.timeout(15000);
       const child = startServer({}, 'stalled');
       const port = await child.ready;
-      await new Promise((resolve, reject) => {
+      await Promise.all([0, 1].map(() => new Promise((resolve, reject) => {
         const client = http.get({ hostname: '127.0.0.1', port, path: '/users', agent: false }, res => {
           res.once('data', resolve);
           res.on('error', error => {
@@ -153,17 +153,26 @@ describe('Server lifecycle logging', function() {
           res.resume();
         });
         client.on('error', reject);
-      });
+      })));
       const started = process.hrtime.bigint();
       child.kill(signal);
       assert.deepStrictEqual(await child.closed, { code: null, signal });
       const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
       assert(elapsedMs >= 9900 && elapsedMs < 14000);
       assert.deepStrictEqual(child.records.map(entry => entry.record.event), [
-        'server_listening', 'server_stopping', 'server_shutdown_timeout'
+        'server_listening', 'server_stopping', 'server_shutdown_timeout',
+        'request_complete', 'request_complete'
       ]);
       assert.strictEqual(child.records[2].record.level, 'error');
       assert.strictEqual(child.records[2].stream, 'stderr');
+      child.records.slice(3).forEach(entry => {
+        assert.strictEqual(entry.stream, 'stderr');
+        assert.strictEqual(entry.record.level, 'error');
+        assert.strictEqual(entry.record.completed, false);
+        assert.strictEqual(entry.record.status, 200);
+        assert.strictEqual(entry.record.path, '/users/');
+        assert(Number.isFinite(entry.record.duration_ms) && entry.record.duration_ms >= 0);
+      });
     });
   });
 

@@ -24,7 +24,8 @@ No additional dependencies or log files are required.
 - `server_listening`, `server_stopping`, and `server_stopped` track the lifecycle.
   SIGINT/SIGTERM drain active requests and flush queued log output within a shared
   ten-second deadline, preserving Node's signal termination status. At the deadline,
-  termination takes priority and unread output may be lost. Startup failures exit
+  outstanding requests receive one incomplete error record before termination;
+  unread output may still be lost if the collector is blocked. Startup failures exit
   with status 1; server errors and shutdown timeouts use error-level records.
 
 `npm test` covers logging privacy, levels, real HTTP requests, startup failures,
