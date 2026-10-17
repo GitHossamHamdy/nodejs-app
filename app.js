@@ -2,8 +2,8 @@ var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
-var logger = require('./lib/logger');
-var requestLogger = require('./lib/request-logger');
+const logger = require('./lib/logger');
+const requestLogger = require('./lib/request-logger');
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
@@ -29,13 +29,14 @@ app.use(function(req, res, next) {
 });
 
 // error handler
-app.use(function(err, req, res, next) {
-  if ((err.status || 500) >= 500) {
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  if (status >= 500) {
     // Error messages/stacks may contain request data or credentials.
     logger.error('application_error', {
       method: req.method,
       path: requestLogger.safePath(req, res),
-      status: err.status || 500
+      status
     });
   }
 
@@ -44,7 +45,7 @@ app.use(function(err, req, res, next) {
   res.locals.error = req.app.get('env') === 'development' ? err : {};
 
   // render the error page
-  res.status(err.status || 500);
+  res.status(status);
   res.render('error');
 });
 

@@ -6,7 +6,7 @@ const path = require('path');
 
 const children = [];
 
-function startServer(environment, notify) {
+const startServer = (environment, notify) => {
   // A separate pipe exposes readiness in tests without sleeps or port races.
   const args = notify ? ['-e', [
     "var http = require('http');",
@@ -35,65 +35,65 @@ function startServer(environment, notify) {
   }
   child.records = [];
   child.logs = new EventEmitter();
-  child.closed = new Promise(function(resolve, reject) {
+  child.closed = new Promise((resolve, reject) => {
     child.once('error', reject);
-    child.once('close', (code, signal) => resolve({ code: code, signal: signal }));
+    child.once('close', (code, signal) => resolve({ code, signal }));
   });
-  ['stdout', 'stderr'].forEach(function(stream) {
+  ['stdout', 'stderr'].forEach(stream => {
     let pending = '';
     child[stream].setEncoding('utf8');
-    child[stream].on('data', function(chunk) {
+    child[stream].on('data', chunk => {
       pending += chunk;
       let newline;
       while ((newline = pending.indexOf('\n')) !== -1) {
         const record = JSON.parse(pending.slice(0, newline));
         pending = pending.slice(newline + 1);
-        child.records.push({ stream: stream, record: record });
+        child.records.push({ stream, record });
         child.logs.emit('record', record);
       }
     });
   });
   children.push(child);
   return child;
-}
+};
 
-function waitForLog(child, event) {
+const waitForLog = (child, event) => {
   const existing = child.records.find(entry => entry.record.event === event);
   if (existing) {
     return Promise.resolve(existing.record);
   }
-  return new Promise(function(resolve, reject) {
-    function onRecord(record) {
+  return new Promise((resolve, reject) => {
+    const onRecord = record => {
       if (record.event === event) {
         child.logs.removeListener('record', onRecord);
         child.removeListener('close', onClose);
         resolve(record);
       }
-    }
-    function onClose() {
+    };
+    const onClose = () => {
       child.logs.removeListener('record', onRecord);
       reject(new Error('Server closed before ' + event));
-    }
+    };
     child.logs.on('record', onRecord);
     child.once('close', onClose);
   });
-}
+};
 
-function get(port, route) {
-  return new Promise(function(resolve, reject) {
-    const client = http.get({ hostname: '127.0.0.1', port: port, path: route, agent: false }, function(res) {
+const get = (port, route) => {
+  return new Promise((resolve, reject) => {
+    const client = http.get({ hostname: '127.0.0.1', port, path: route, agent: false }, res => {
       res.resume();
       res.on('end', () => resolve(res.statusCode));
       res.on('error', reject);
     });
     client.on('error', reject);
   });
-}
+};
 
 describe('Server lifecycle logging', function() {
   this.timeout(7000);
 
-  afterEach(async function() {
+  afterEach(async () => {
     for (const child of children.splice(0)) {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGKILL');
@@ -102,8 +102,8 @@ describe('Server lifecycle logging', function() {
     }
   });
 
-  ['SIGTERM', 'SIGINT'].forEach(function(signal) {
-    it('logs startup and exits cleanly on ' + signal, async function() {
+  ['SIGTERM', 'SIGINT'].forEach(signal => {
+    it('logs startup and exits cleanly on ' + signal, async () => {
       const child = startServer();
       const listening = await waitForLog(child, 'server_listening');
       assert.strictEqual(listening.level, 'info');
@@ -121,13 +121,13 @@ describe('Server lifecycle logging', function() {
     });
   });
 
-  it('drains an active response before logging a clean shutdown', async function() {
+  it('drains an active response before logging a clean shutdown', async () => {
     const child = startServer({}, 'slow');
     const port = await child.ready;
-    const response = new Promise(function(resolve, reject) {
-      const client = http.get({ hostname: '127.0.0.1', port: port, path: '/users', agent: false }, function(res) {
+    const response = new Promise((resolve, reject) => {
+      const client = http.get({ hostname: '127.0.0.1', port, path: '/users', agent: false }, res => {
         let body = '';
-        res.on('data', function(chunk) { body += chunk; });
+        res.on('data', chunk => { body += chunk; });
         res.once('data', () => child.kill('SIGTERM'));
         res.on('end', () => resolve(body));
         res.on('error', reject);
@@ -142,7 +142,7 @@ describe('Server lifecycle logging', function() {
     assert.strictEqual(child.records[2].record.completed, true);
   });
 
-  it('reports port conflicts as structured errors and exits nonzero', async function() {
+  it('reports port conflicts as structured errors and exits nonzero', async () => {
     const occupied = http.createServer();
     await new Promise(resolve => occupied.listen(0, resolve));
     try {
@@ -159,7 +159,7 @@ describe('Server lifecycle logging', function() {
     }
   });
 
-  it('logs synchronous startup errors without raw exception output', async function() {
+  it('logs synchronous startup errors without raw exception output', async () => {
     const child = startServer({ PORT: '65536' });
     assert.strictEqual((await child.closed).code, 1);
     assert.strictEqual(child.records.length, 1);
@@ -168,8 +168,8 @@ describe('Server lifecycle logging', function() {
     assert.strictEqual(child.records[0].stream, 'stderr');
   });
 
-  ['warn', 'silent'].forEach(function(level) {
-    it('applies LOG_LEVEL=' + level + ' to HTTP and lifecycle records', async function() {
+  ['warn', 'silent'].forEach(level => {
+    it('applies LOG_LEVEL=' + level + ' to HTTP and lifecycle records', async () => {
       const child = startServer({ LOG_LEVEL: level }, true);
       const port = await child.ready;
       assert.strictEqual(await get(port, '/users'), 200);

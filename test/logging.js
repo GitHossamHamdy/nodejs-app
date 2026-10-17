@@ -6,22 +6,22 @@ const app = require('../app');
 const logger = require('../lib/logger');
 const requestLogger = require('../lib/request-logger');
 
-function memoryLogger(level) {
+const memoryLogger = level => {
   const stdout = [];
   const stderr = [];
   return {
     logger: logger.createLogger({
-      level: level,
+      level,
       stdout: { write: line => stdout.push(JSON.parse(line)) },
       stderr: { write: line => stderr.push(JSON.parse(line)) }
     }),
-    stdout: stdout,
-    stderr: stderr
+    stdout,
+    stderr
   };
-}
+};
 
-describe('Structured logger', function() {
-  it('emits JSON with UTC timestamps and routes severity to the right stream', function() {
+describe('Structured logger', () => {
+  it('emits JSON with UTC timestamps and routes severity to the right stream', () => {
     const output = memoryLogger();
     output.logger.debug('hidden');
     output.logger.info('started', { port: 3000 });
@@ -34,28 +34,28 @@ describe('Structured logger', function() {
     assert.strictEqual(new Date(output.stdout[0].timestamp).toISOString(), output.stdout[0].timestamp);
   });
 
-  ['debug', 'info', 'warn', 'error', 'silent'].forEach(function(level, index) {
-    it('filters at the ' + level + ' threshold', function() {
+  ['debug', 'info', 'warn', 'error', 'silent'].forEach((level, index) => {
+    it('filters at the ' + level + ' threshold', () => {
       const output = memoryLogger(level);
       ['debug', 'info', 'warn', 'error'].forEach(severity => output.logger[severity](severity));
       assert.strictEqual(output.stdout.length + output.stderr.length, Math.max(4 - index, 0));
     });
   });
 
-  it('handles case and whitespace and falls back safely for invalid levels', function() {
+  it('handles case and whitespace and falls back safely for invalid levels', () => {
     const warning = memoryLogger(' WARN ');
     warning.logger.info('hidden');
     warning.logger.warn('visible');
     assert.strictEqual(warning.stdout.length, 0);
     assert.strictEqual(warning.stderr.length, 1);
-    ['invalid', '__proto__', 'constructor'].forEach(function(level) {
+    ['invalid', '__proto__', 'constructor'].forEach(level => {
       const output = memoryLogger(level);
       output.logger.info('visible');
       assert.strictEqual(output.stdout.length, 1);
     });
   });
 
-  it('does not let fields replace the timestamp, severity or event', function() {
+  it('does not let fields replace the timestamp, severity or event', () => {
     const output = memoryLogger();
     output.logger.info('actual', { event: 'fake', level: 'error', timestamp: 'fake' });
     assert.strictEqual(output.stdout[0].event, 'actual');
@@ -64,12 +64,12 @@ describe('Structured logger', function() {
   });
 });
 
-describe('HTTP logging', function() {
+describe('HTTP logging', () => {
   let records;
   let originalStdout;
   let originalStderr;
 
-  beforeEach(function() {
+  beforeEach(() => {
     records = [];
     originalStdout = process.stdout.write;
     originalStderr = process.stderr.write;
@@ -86,12 +86,12 @@ describe('HTTP logging', function() {
     process.stderr.write = capture(originalStderr);
   });
 
-  afterEach(function() {
+  afterEach(() => {
     process.stdout.write = originalStdout;
     process.stderr.write = originalStderr;
   });
 
-  it('logs one completed request with route, status and duration', async function() {
+  it('logs one completed request with route, status and duration', async () => {
     await request(app).get('/users?private=do-not-log-this').expect(200);
     assert.strictEqual(records.length, 1);
     const record = records[0];
@@ -106,7 +106,7 @@ describe('HTTP logging', function() {
     assert(!JSON.stringify(records).includes('do-not-log-this'));
   });
 
-  it('redacts unknown paths, headers, cookies, bodies and query values', async function() {
+  it('redacts unknown paths, headers, cookies, bodies and query values', async () => {
     await request(app).post('/do-not-log-this?private=do-not-log-this')
       .set('Authorization', 'do-not-log-this')
       .set('Cookie', 'private=do-not-log-this')
@@ -118,7 +118,7 @@ describe('HTTP logging', function() {
     assert(!JSON.stringify(records).includes('do-not-log-this'));
   });
 
-  it('does not expose malformed JSON parser errors', async function() {
+  it('does not expose malformed JSON parser errors', async () => {
     await request(app).post('/users').set('Content-Type', 'application/json')
       .send('{do-not-log-this').expect(400);
     assert.strictEqual(records[0].status, 400);
@@ -126,7 +126,7 @@ describe('HTTP logging', function() {
     assert(!JSON.stringify(records).includes('do-not-log-this'));
   });
 
-  it('uses templates rather than parameter values for mounted routers', async function() {
+  it('uses templates rather than parameter values for mounted routers', async () => {
     const example = express();
     const router = express.Router();
     router.get('/:id', (req, res) => res.send('ok'));
@@ -137,24 +137,24 @@ describe('HTTP logging', function() {
     assert(!JSON.stringify(records).includes('do-not-log-this'));
   });
 
-  it('logs static responses without a raw URL', async function() {
+  it('logs static responses without a raw URL', async () => {
     await request(app).get('/stylesheets/style.css?private=do-not-log-this').expect(200);
     assert.strictEqual(records.length, 1);
     assert.strictEqual(records[0].path, '[unmatched]');
     assert(!JSON.stringify(records).includes('do-not-log-this'));
   });
 
-  it('logs application failures without raw error messages or stacks', async function() {
+  it('logs application failures without raw error messages or stacks', async () => {
     const router = require('../routes/users');
     const layer = router.stack[0].route.stack[0];
     const original = layer.handle;
-    layer.handle = function(req, res, next) {
+    layer.handle = (req, res, next) => {
       next(new Error('do-not-log-this'));
     };
     try {
       await request(app).get('/users').expect(500);
       assert.deepStrictEqual(records.map(record => record.event), ['application_error', 'request_complete']);
-      records.forEach(function(record) {
+      records.forEach(record => {
         assert.strictEqual(record.level, 'error');
         assert.strictEqual(record.path, '/users/');
         assert.strictEqual(record.status, 500);
@@ -165,14 +165,14 @@ describe('HTTP logging', function() {
     }
   });
 
-  it('records disconnected responses exactly once at error level', function(done) {
+  it('records disconnected responses exactly once at error level', done => {
     const example = express();
     example.use(requestLogger);
-    example.get('/stream', function(req, res) {
+    example.get('/stream', (req, res) => {
       res.write('partial');
-      res.on('close', function() {
-        setImmediate(function() {
-          server.close(function() {
+      res.on('close', () => {
+        setImmediate(() => {
+          server.close(() => {
             try {
               assert.strictEqual(records.length, 1);
               assert.strictEqual(records[0].completed, false);
@@ -186,8 +186,8 @@ describe('HTTP logging', function() {
         });
       });
     });
-    const server = example.listen(0, '127.0.0.1', function() {
-      const client = http.get({ hostname: '127.0.0.1', port: server.address().port, path: '/stream' }, function(res) {
+    const server = example.listen(0, '127.0.0.1', () => {
+      const client = http.get({ hostname: '127.0.0.1', port: server.address().port, path: '/stream' }, res => {
         res.once('data', () => res.destroy());
       });
       client.on('error', done);
